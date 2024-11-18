@@ -10,10 +10,9 @@
 using namespace std;
 
 class Heap {
-private:
-    unsigned heapsize;
+    int heapsize;
     byte* heap;
-    unsigned freeList;
+    byte* freeList;
     map<string, int*> nameToDesc;
     map<int*, string> descToName;
 

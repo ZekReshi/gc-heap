@@ -83,8 +83,8 @@ int main() {
 
     heap.dump();
 
-    byte* roots[] = { (byte*) list, nullptr };
-    heap.gc(&roots[0]);
+    //byte* roots[] = { (byte*) list, nullptr };
+    //heap.gc(&roots[0]);
 
     return 0;
 }

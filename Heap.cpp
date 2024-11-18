@@ -2,32 +2,46 @@
 // Created by flori on 09.09.2024.
 //
 
-#define heapAt(a) *((unsigned*) (heap + a))
-#define adrAt(a) *((int**) (heap + a))
-#define lenAt(a) setFree(heapAt(a - sizeof(unsigned)))
-#define setUsed(a) (a | 0x80000000)
-#define setFree(a) (a & 0x7fffffff)
-#define isFreeAt(a) (~heapAt(a - sizeof(unsigned)) & 0x80000000)
-#define isUsedAt(a) (heapAt(a - sizeof(unsigned)) & 0x80000000)
-#define setMark(a) *((long*)(a - sizeof(byte*))) |= 1
-#define incTag(a) *((byte**)(a - sizeof(byte*))) += sizeof(int)
-#define isMarked(a) (((*((long*)(a - sizeof(byte*)))) & 1) != 0)
-
 #include <iostream>
 #include "Heap.h"
+
+#define readInt(a) *((int*)(a))
+#define writeInt(a, b) *((int*)(a)) = b
+#define readIntP(a) *((int**)(a))
+#define writeIntP(a, b) *((int**)(a)) = b
+#define readLongLong(a) *((long long*)(a))
+#define writeLongLong(a, b) *((long long*)(a)) = b
+#define readByte(a) *((byte*)(a))
+#define writeByte(a, b) *((byte*)(a)) = b
+#define readByteP(a) *((byte**)(a))
+#define writeByteP(a, b) *((byte**)(a)) = b
+
+#define readTypeDescP(a) (int*)(readLongLong(a - sizeof(int**)) - readLongLong(a - sizeof(int**)) % 4)
+#define writeTypeDescP(a, b) writeIntP(a - sizeof(int**), b)
+#define isFree(a) (readLongLong(a - sizeof(int**)) & 2)
+#define setFree(a) writeLongLong(a - sizeof(int**), readLongLong(a - sizeof(int**)) | 2)
+#define isUsed(a) (!isFree(a))
+#define setUsed(a) writeLongLong(a - sizeof(int**), readLongLong(a - sizeof(int**)))
+#define isMarked(a) (readLongLong(a - sizeof(byte*)) & 1)
+#define setMarked(a) writeLongLong(a - sizeof(int**), readLongLong(a - sizeof(int**)) | 1)
+#define readLength(a) readInt(readTypeDescP(a))
+#define readNext(a) readByteP(a + sizeof(int))
+#define writeNext(a, b) writeByteP(a + sizeof(int), b)
 
 Heap::Heap() {
     heapsize = 32 * 1024 * sizeof(byte);
     cout << "Heap size: " << heapsize << endl;
-    heap = (byte*) malloc(heapsize);
+    heap = static_cast<byte *>(malloc(heapsize));
     cout << "Heap address: " << heap << endl;
-    freeList = sizeof(unsigned);
+    freeList = heap + sizeof(int**);
     // necessary?
-    for (unsigned i = 0; i < heapsize; i++) {
-        heap[i] = (byte) 0;
+    for (int i = 0; i < heapsize; i++) {
+        writeByte(heap + i, static_cast<byte>(0));
     }
-    heapAt(freeList - sizeof(unsigned)) = setFree(heapsize);
-    heapAt(freeList) = sizeof(unsigned);
+    writeIntP(freeList - sizeof(int**), reinterpret_cast<int *>(freeList));
+    setFree(freeList);
+    writeInt(freeList, heapsize);
+    writeNext(freeList, freeList);
 }
 
 Heap::~Heap() {
@@ -37,49 +51,37 @@ Heap::~Heap() {
 byte* Heap::alloc(const string& type) {
     int* descAdr = nameToDesc[type];
     int size = *descAdr;
-
-    //cout << "Searching size " << size << endl;
-    unsigned cur = freeList;
-    unsigned prev = freeList;
-    while (lenAt(cur) < size + sizeof(unsigned) && cur != freeList) {
+    byte* cur = freeList;
+    byte* prev = freeList;
+    freeList = readNext(freeList);
+    while (readLength(cur) < size + sizeof(int**) && cur != freeList) {
         prev = cur;
-        cur = heapAt(cur);
+        cur = readNext(cur);;
     }
-    if (lenAt(cur) < size + sizeof(unsigned)) {
+    if (readLength(cur) < size) {
         cout << "HEAP OVERFLOW" << endl;
         return nullptr;
     }
-    else {
-        unsigned newLen = lenAt(cur) - (size + 4);
-        if (newLen >= 8) { // split block
-            unsigned newStart = cur + lenAt(cur) - (size + 4);
-            //cout << "NS: " << newStart << endl;
-            //cout << "SP4: " << (size + 4) << endl;
-            //cout << "SP4M: " << setUsed(size + 4) << endl;
-            heapAt(newStart - sizeof(unsigned)) = setUsed(size + sizeof(unsigned));
-            //cout << "NLM: " << setFree(newLen) << endl;
-            //cout << "P: " << prev << endl;
-            heapAt(prev-4) = setFree(newLen);
-            for (unsigned i = newStart; i < newStart + size; i++) {
-                heap[i] = (byte) 0;
-            }
-            adrAt(newStart) = descAdr;
-            return heap + newStart + sizeof(unsigned*);
-        } else { // remove block from list
-            if (cur == prev) { // last free block
-                freeList = 0;
-            } else {
-                heapAt(prev) = heapAt(cur);
-                freeList = prev;
-            }
-            heapAt(cur - sizeof(unsigned)) = setUsed(heapAt(cur - sizeof(unsigned)));
-            for (unsigned i = cur; i < cur + size; i++) {
-                heapAt(i) = 0;
-            }
-            adrAt(cur) = descAdr;
-            return heap + cur + sizeof(unsigned*);
+    byte* p = freeList;
+    int newLen = readLength(p) - size;
+    if (newLen >= sizeof(int**) + sizeof(int) + sizeof(byte*)) { // split block
+        p += readLength(p) - size;
+        writeInt(p, size);
+        writeInt(freeList, newLen);
+    } else { // remove block from list
+        if (freeList == prev) {
+            freeList = nullptr;
+        } else {
+            writeNext(prev, readNext(freeList));
+            freeList = prev;
         }
     }
+    for (int i = 0; i < size - sizeof(int**); i++) {
+        writeByte(p + i, static_cast<byte>(0));
+    }
+    writeTypeDescP(p, descAdr);
+    setUsed(p);
+    return p;
 }
 
 void Heap::registerType(const string& type, int* descAdr) {
@@ -88,7 +90,7 @@ void Heap::registerType(const string& type, int* descAdr) {
     cout << "Registered type " << type << " at " << descAdr << endl;
     cout << "- Size: " << *descAdr << endl;
     cout << "- Pointer offsets:";
-    int* cur = descAdr + 1;
+    const int* cur = descAdr + 1;
     while (*cur >= 0) {
         cout << " " << *cur;
         cur++;
@@ -105,7 +107,7 @@ void Heap::gc(byte** roots) {
     sweep();
 }
 
-void Heap::mark(byte* root) {
+void Heap::mark(byte* root) {/*
     byte *cur = root;
     byte *prev = nullptr;
     //cout << "Root: " << root << endl;
@@ -151,10 +153,10 @@ void Heap::mark(byte* root) {
             prev = *(byte **) (cur + off);
             *(byte **) (cur + off) = p;
         }
-    }
+    }*/
 }
 
-void Heap::sweep() {
+void Heap::sweep() {/*
     unsigned p = sizeof(unsigned);
     unsigned free = 0;
     while (p < heapsize) {
@@ -170,40 +172,44 @@ void Heap::sweep() {
             p.next = free; free = p;
         }
         p += p.tag.size;
-    }
+    }*/
 }
 
 void Heap::dump() {
-    //cout << "H0: " << heapAt(0) << endl;return;
     cout << "Objects:" << endl;
-    unsigned acc = 0;
-    unsigned cur = sizeof(unsigned);
-    if (isFreeAt(cur)) {
-        cur = cur + lenAt(cur);
-    }
-    //cout << cur << " " << lenAt(cur) << " " << isUsedAt(cur) << endl;
-    while (cur < heapsize) {
-        //cout << cur << ": " << lenAt(cur) << endl;
-        if (isUsedAt(cur)) {
-            cout << "- Address: " << hex << cur << "/" << &heapAt(cur) << endl;
-            cout << "  Type: " << descToName[adrAt(cur)] << endl;
+    int used = 0;
+    byte* cur = heap + sizeof(int**);
+    while (cur < heap + heapsize) {
+        if (isUsed(cur)) {
+            used += readLength(cur);
+            cout << "- Address: " << hex << cur << "/" << dec << cur - heap << endl;
+            cout << "  Type: " << descToName[readTypeDescP(cur)] << endl;
             cout << "  Content: " << hex;
-            for (int i = 0; i < 4 && i < (*adrAt(cur) - sizeof(unsigned*)) / sizeof(unsigned); i++) {
-                cout << to_integer<int>(heap[cur + sizeof(unsigned*) + i]);
+            for (int i = 0; i < 4; i++) {
+                cout << static_cast<int>(readByte(cur + i));
             }
             cout << dec << endl;
-            acc += lenAt(cur);
+            cout << "  Pointers: " << endl;
+            const int* offset = readTypeDescP(cur);
+            offset++;
+            while (*offset >= 0) {
+                cout << "    Offset " << *offset;
+                cout << ", Value " << hex << readIntP(cur + *offset) << dec << endl;
+                offset++;
+            }
         }
-        cur += lenAt(cur);
+        cur += readLength(cur);
     }
-    cout << "Memory used: " << acc << endl;
+    cout << "Memory used: " << used << endl;
     cout << "Free Blocks:" << endl;
-    acc = 0;
+    int free = 0;
     cur = freeList;
-    do {
-        cout << "- Free block at " << cur << " sized " << lenAt(cur) << endl;
-        acc += lenAt(cur);
-        cur = heapAt(cur);
-    } while (cur != freeList);
-    cout << "Free Memory: " << acc << endl << endl;
+    if (cur != nullptr) {
+        do {
+            cout << "- Free block at " << hex << cur << "/" << dec << cur - heap << " sized " << readLength(cur) << endl;
+            free += readLength(cur);
+            cur = readNext(cur);
+        } while (cur != freeList);
+    }
+    cout << dec << "Free Memory: " << free << endl;
 }
