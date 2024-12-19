@@ -15,18 +15,24 @@
 #define writeByte(a, b) *((byte*)(a)) = b
 #define readByteP(a) *((byte**)(a))
 #define writeByteP(a, b) *((byte**)(a)) = b
+#define typeTag(a) (a - sizeof(byte*))
 
-#define readTypeDescP(a) (int*)(readLongLong(a - sizeof(int**)) - readLongLong(a - sizeof(int**)) % 4)
-#define writeTypeDescP(a, b) writeIntP(a - sizeof(int**), b)
-#define isFree(a) (readLongLong(a - sizeof(int**)) & 2)
-#define setFree(a) writeLongLong(a - sizeof(int**), readLongLong(a - sizeof(int**)) | 2)
+#define readTypeDescP(a) (int*)(readLongLong(typeTag(a)) - readLongLong(typeTag(a)) % 4)
+#define writeTypeDescP(a, b) writeIntP(typeTag(a), b)
+#define isFree(a) (readLongLong(typeTag(a)) & 2)
+#define setFree(a) writeLongLong(typeTag(a), readLongLong(typeTag(a)) | 2)
 #define isUsed(a) (!isFree(a))
-#define setUsed(a) writeLongLong(a - sizeof(int**), readLongLong(a - sizeof(int**)))
-#define isMarked(a) (readLongLong(a - sizeof(byte*)) & 1)
-#define setMarked(a) writeLongLong(a - sizeof(int**), readLongLong(a - sizeof(int**)) | 1)
+#define setUsed(a) writeLongLong(typeTag(a), readLongLong(typeTag(a)))
+#define isMarked(a) (readLongLong(typeTag(a)) & 1)
+#define setMarked(a) writeLongLong(typeTag(a), readLongLong(typeTag(a)) | 1)
+#define setUnmarked(a) writeLongLong(typeTag(a), readLongLong(typeTag(a)) & ~1)
 #define readLength(a) readInt(readTypeDescP(a))
 #define readNext(a) readByteP(a + sizeof(int))
 #define writeNext(a, b) writeByteP(a + sizeof(int), b)
+#define readMask(a) ((*((unsigned long*)(typeTag(a)))) % 4)
+#define readOffset(a) *((int*)(*((byte**)(typeTag(a))) - readMask(a)))
+#define incTag(a) writeTypeDescP(a, readIntP(typeTag(a)) + 1)
+#define restoreTag(a, b) writeTypeDescP(a, readIntP(typeTag(a))+b/4)
 
 Heap::Heap() {
     heapsize = 32 * 1024 * sizeof(byte);
@@ -38,7 +44,7 @@ Heap::Heap() {
     for (int i = 0; i < heapsize; i++) {
         writeByte(heap + i, static_cast<byte>(0));
     }
-    writeIntP(freeList - sizeof(int**), reinterpret_cast<int *>(freeList));
+    writeIntP(typeTag(freeList), reinterpret_cast<int *>(freeList));
     setFree(freeList);
     writeInt(freeList, heapsize);
     writeNext(freeList, freeList);
@@ -56,7 +62,7 @@ byte* Heap::alloc(const string& type) {
     freeList = readNext(freeList);
     while (readLength(cur) < size + sizeof(int**) && cur != freeList) {
         prev = cur;
-        cur = readNext(cur);;
+        cur = readNext(cur);
     }
     if (readLength(cur) < size) {
         cout << "HEAP OVERFLOW" << endl;
@@ -107,72 +113,55 @@ void Heap::gc(byte** roots) {
     sweep();
 }
 
-void Heap::mark(byte* root) {/*
+void Heap::mark(byte* root) {
     byte *cur = root;
     byte *prev = nullptr;
-    //cout << "Root: " << root << endl;
-    //cout << "Marking: " << descToName[*(int**)(cur - sizeof(byte*))] << endl;
-    //cout << "Pre-mark: " << *((int**)(cur - sizeof(byte*))) << endl;
-    setMark(cur);
+    setMarked(cur);
     for (;;) {
-        //cout << "Post-mark: " << *((int**)(cur - sizeof(byte*))) << endl;
         incTag(cur);
-        //cout << "Post-increase: " << *((int**)(cur - sizeof(byte*))) << endl;
-        unsigned mask = (*((unsigned long*)(cur - sizeof(byte*)))) % 4;
-        //cout << cur << "/"
-        //    << mask << "/"
-        //    << cur - sizeof(byte*) << "/"
-        //    << *((int**)(cur - sizeof(byte*))) << "/"
-        //    << *((int**)(cur - sizeof(byte*))) - mask << "/"
-        //    << *(*((int**)(cur - sizeof(byte*))) - mask) << endl;
-        int off = *((int*)(*((byte**)(cur - sizeof(byte*))) - mask));
-        //cout << "Offset " << off << endl;
+        int off = readOffset(cur);
         if (off >= 0) { // advance
             byte *p = *(byte **) (cur + off);
-            //cout << "Points to: " << p << endl;
             if (p != nullptr && !isMarked(p)) {
                 *(byte **) (cur + off) = prev;
                 prev = cur;
                 cur = p;
-                //cout << "Marking: " << descToName[*(int**)(cur - sizeof(unsigned*))] << endl;
-                //cout << "Pre-mark: " << *((int**)(cur - sizeof(byte*))) << endl;
-                setMark(cur);
+                setMarked(cur);
             }
         } else { // off < 0: retreat
-            //cout << "Pre-restore: " << *((int**)(cur - sizeof(byte*))) << endl;
-            *((int**)(cur - sizeof(byte*))) += off / sizeof(int); // restore tag
-            //cout << "Post-restore: " << *((int**)(cur - sizeof(byte*))) << endl;
-            //cout << "Previous: " << prev << endl;
+            restoreTag(cur,off);
             if (prev == nullptr) return;
             byte *p = cur;
             cur = prev;
-            mask = (*((unsigned long*)(cur - sizeof(byte*)))) % 4;
-            //cout << "Previous Tag: " << *((int**)(cur - sizeof(byte*))) << endl;
-            off = *((int*)(*((byte**)(cur - sizeof(byte*))) - mask));
-            //cout << "Previous offset: " << off << endl;
+            off = readOffset(cur);
             prev = *(byte **) (cur + off);
             *(byte **) (cur + off) = p;
         }
-    }*/
+    }
 }
 
-void Heap::sweep() {/*
-    unsigned p = sizeof(unsigned);
-    unsigned free = 0;
-    while (p < heapsize) {
-        if (isMarked()) p.marked = false;
+void Heap::sweep() {
+    byte* free = nullptr;
+    byte* cur = heap + sizeof(int**);
+    while (cur < heap + heapsize) {
+        if (isMarked(cur))
+            setUnmarked(cur);
         else { // free: collect p
-            int size = p.tag.size;
-            Pointer q = p + size;
-            while (q < heapEnd && !q.marked) {
-                size += q.tag.size; // merge
-                q = q + q.tag.size;
+            int size = readInt(readTypeDescP(cur));
+            byte* q = cur + size;
+            while (q < heap + heapsize && !isMarked(q)) {
+                size += readInt(readTypeDescP(q)); // merge
+                q = q + readInt(readTypeDescP(q));
             }
-            p.tag = p; p.tag.size = size;
-            p.next = free; free = p;
+            writeByteP(typeTag(cur),cur);
+            setFree(cur);
+            writeInt(cur ,size);
+            writeNext(cur,free);
+            free = cur;
         }
-        p += p.tag.size;
-    }*/
+        cur += readLength(cur);
+    }
+    freeList =free;
 }
 
 void Heap::dump() {
@@ -209,7 +198,7 @@ void Heap::dump() {
             cout << "- Free block at " << hex << cur << "/" << dec << cur - heap << " sized " << readLength(cur) << endl;
             free += readLength(cur);
             cur = readNext(cur);
-        } while (cur != freeList);
+        } while (cur != nullptr && cur != freeList);
     }
     cout << dec << "Free Memory: " << free << endl;
 }
