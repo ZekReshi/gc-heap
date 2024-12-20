@@ -82,11 +82,16 @@ int main() {
     list->first = fsNode;
 
     heap.dump();
-    mw->lect = nullptr;
-    byte* roots[] = { (byte*) list, nullptr };
-    heap.gc(roots);
-    std::cout << "Deleted some objects and let gc run" << std::endl;
 
+    mw->lect = nullptr;
+    byte* roots[] = { (byte *) list, nullptr };
+    heap.gc(roots);
+    std::cout << "Deleted MW's lecture and let gc run" << std::endl;
+    heap.dump();
+
+    byte* roots2[] = { nullptr };
+    heap.gc(roots2);
+    std::cout << "Deleted root and let gc run" << std::endl;
     heap.dump();
 
     return 0;

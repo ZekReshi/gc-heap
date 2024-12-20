@@ -121,9 +121,9 @@ void Heap::mark(byte* root) {
         incTag(cur);
         int off = readOffset(cur);
         if (off >= 0) { // advance
-            byte *p = *(byte **) (cur + off);
+            byte *p = readByteP(cur + off);
             if (p != nullptr && !isMarked(p)) {
-                *(byte **) (cur + off) = prev;
+                writeByteP(cur + off, prev);
                 prev = cur;
                 cur = p;
                 setMarked(cur);
@@ -134,8 +134,8 @@ void Heap::mark(byte* root) {
             byte *p = cur;
             cur = prev;
             off = readOffset(cur);
-            prev = *(byte **) (cur + off);
-            *(byte **) (cur + off) = p;
+            prev = readByteP(cur + off);
+            writeByteP(cur + off, p);
         }
     }
 }
@@ -151,7 +151,7 @@ void Heap::sweep() {
             byte* q = cur + size;
             while (q < heap + heapsize && !isMarked(q)) {
                 size += readInt(readTypeDescP(q)); // merge
-                q = q + readInt(readTypeDescP(q));
+                q += readInt(readTypeDescP(q));
             }
             writeByteP(typeTag(cur),cur);
             setFree(cur);
