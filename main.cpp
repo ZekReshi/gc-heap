@@ -42,8 +42,8 @@ int main() {
     int lecture[] = { sizeof(int*) + sizeof(Lecture), (int)sizeof(unsigned) * -1 };
     heap.registerType("Lecture", &lecture[0]);
 
-    std::cout << std::endl;
     heap.dump();
+    std::cout << std::endl;
 
     Lecture* ssw = (Lecture*) heap.alloc("Lecture");
     ssw->id = 1;
@@ -59,7 +59,6 @@ int main() {
     LectNode* qcNode = (LectNode*) heap.alloc("LectNode");
     qcNode->lect = qc;
     sswNode->next = qcNode;
-    cout << sswNode << " " << &sswNode->next << " " << &sswNode->lect << endl;
 
     LectNode* qcNode2 = (LectNode*) heap.alloc("LectNode");
     qcNode2->lect = qc;
