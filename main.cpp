@@ -33,15 +33,16 @@ int main() {
     Heap heap;
     int studentListDesc[] = { sizeof(int*) + sizeof(StudentList), 0, (int)sizeof(int) * -2 };
     heap.registerType("StudentList", &studentListDesc[0]);
-    int studNodeDesc[] = { sizeof(int*) + sizeof(StudNode), 0, 8, (int)sizeof(int) * -3 };
+    int studNodeDesc[] = { sizeof(int*) + sizeof(StudNode), 0, sizeof(StudNode*), (int)sizeof(int) * -3 };
     heap.registerType("StudNode", &studNodeDesc[0]);
-    int studentDesc[] = { sizeof(int*) + sizeof(Student), 40, (int)sizeof(int) * -2 };
+    int studentDesc[] = { sizeof(int*) + sizeof(Student), sizeof(int) + sizeof(string) + 4, (int)sizeof(int) * -2 }; // +4 for 8-byte-alignment
     heap.registerType("Student", &studentDesc[0]);
     int lectNodeDesc[] = { sizeof(int*) + sizeof(LectNode), 0, sizeof(LectNode*), (int)sizeof(int) * -3 };
     heap.registerType("LectNode", &lectNodeDesc[0]);
     int lecture[] = { sizeof(int*) + sizeof(Lecture), (int)sizeof(unsigned) * -1 };
     heap.registerType("Lecture", &lecture[0]);
 
+    std::cout << std::endl;
     heap.dump();
 
     Lecture* ssw = (Lecture*) heap.alloc("Lecture");
@@ -82,17 +83,27 @@ int main() {
     list->first = fsNode;
 
     heap.dump();
+    std::cout << std::endl;
 
     mw->lect = nullptr;
     byte* roots[] = { (byte *) list, nullptr };
     heap.gc(roots);
     std::cout << "Deleted MW's lecture and let gc run" << std::endl;
     heap.dump();
+    std::cout << std::endl;
 
-    byte* roots2[] = { nullptr };
+    fs->lect = nullptr;
+    byte* roots2[] = { (byte *) list, nullptr };
     heap.gc(roots2);
+    std::cout << "Deleted FS's lecture and let gc run" << std::endl;
+    heap.dump();
+    std::cout << std::endl;
+
+    byte* roots3[] = { nullptr };
+    heap.gc(roots3);
     std::cout << "Deleted root and let gc run" << std::endl;
     heap.dump();
+    std::cout << std::endl;
 
     return 0;
 }
